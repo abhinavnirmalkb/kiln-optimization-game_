@@ -1,0 +1,15 @@
+{
+    "name": "kiln-game-with-server",
+    "version": "1.0.0",
+    "description": "Server-side score storage for the Cement Kiln Optimization Game",
+    "main": "server.js",
+    "scripts": {
+        "start": "node server.js"
+    },
+    "author": "",
+    "license": "ISC",
+    "dependencies": {
+        "cors": "^2.8.5",
+        "express": "^4.19.2"
+    }
+}
