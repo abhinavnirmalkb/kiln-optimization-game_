@@ -3,7 +3,7 @@ const cors = require('cors');
 const path = require('path');
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 
 // In-memory array to store scores. For a real-world application,
 // you would use a database here (e.g., MongoDB, PostgreSQL, or a file-based DB like SQLite).
@@ -59,7 +59,6 @@ app.delete('/api/scores', (req, res) => {
 
 
 // --- Server Start ---
-const PORT = process.env.PORT || 3000;
 app.listen(PORT, 0.0.0.0, () => {
     
     console.log(`Server is running at http://localhost:${PORT}`);
