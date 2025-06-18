@@ -59,4 +59,4 @@ app.delete('/api/scores', (req, res) => {
 
 
 // --- Server Start ---
-app.listen(PORT, 0.0.0.0, ());
+app.listen(PORT, '0.0.0.0', () => {});
