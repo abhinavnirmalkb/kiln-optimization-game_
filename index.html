@@ -65,7 +65,7 @@
         </form>
     </div>
 
-    <div id="admin-dashboard" class="w-full max-w-4xl mx-auto bg-slate-800 rounded-2xl shadow-2xl p-8 space-y-6"
+    <div id="admin-dashboard" class="w-full max-w-6xl mx-auto bg-slate-800 rounded-2xl shadow-2xl p-8 space-y-6"
         style="display: none;">
         <div class="flex justify-between items-center">
             <h1 class="text-3xl font-bold text-cyan-400">Admin Dashboard - Team Scores</h1>
@@ -134,6 +134,10 @@
                         10:</h2>
                     <p id="scenario-text" class="text-slate-300 text-lg leading-relaxed"></p>
                 </div>
+                <div class="text-center py-2">
+                    <span class="text-3xl font-mono text-amber-400 transition-colors duration-300"
+                        id="timer-display">00:45</span>
+                </div>
                 <div id="actions-container" class="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4">
                 </div>
             </div>
@@ -198,15 +202,16 @@
         const resultsTitle = document.getElementById('results-title');
         const resultsMessage = document.getElementById('results-message');
         const playAgainBtn = document.getElementById('play-again-btn');
+        const timerDisplay = document.getElementById('timer-display'); // Timer display element
 
         // --- GAME STATE ---
         let kpis = { stability: 50, production: 50, energy: 50 };
         let currentScenarioIndex = 0;
         let currentTeam = null;
-        const API_URL = '/api/scores'; // Define the API endpoint
+        let scenarioTimer = null; // To hold the timer's setInterval ID
+        const API_URL = '/api/scores';
 
         // --- LOGIN AND ADMIN FUNCTIONS ---
-
         function showLoginScreen() {
             currentTeam = null;
             teamNameInput.value = '';
@@ -227,7 +232,7 @@
             loginScreen.style.display = 'none';
 
             if (currentTeam.toLowerCase() === 'admin') {
-                await displayAdminDashboard(); // Use await to handle async fetching
+                await displayAdminDashboard();
             } else {
                 gameContainer.style.display = 'block';
                 initGame();
@@ -243,23 +248,27 @@
                 if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
                 const scores = await response.json();
 
-                scoresContainer.innerHTML = ''; // Clear loading message
+                scoresContainer.innerHTML = '';
 
                 if (scores.length === 0) {
                     scoresContainer.innerHTML = '<p class="text-slate-400 text-center">No scores recorded yet.</p>';
                     return;
                 }
 
-                scores.sort((a, b) => b.score - a.score); // Sort highest to lowest
+                scores.sort((a, b) => b.score - a.score);
 
                 const table = document.createElement('table');
                 table.className = 'w-full text-left table-auto';
+                // Updated table headers
                 table.innerHTML = `
 <thead>
 <tr class="border-b border-slate-700">
 <th class="p-3 text-cyan-400">Rank</th>
 <th class="p-3 text-cyan-400">Team Name</th>
-<th class="p-3 text-cyan-400">Score</th>
+<th class="p-3 text-cyan-400 text-right">Score</th>
+<th class="p-3 text-cyan-400 text-right">Stability</th>
+<th class="p-3 text-cyan-400 text-right">Production</th>
+<th class="p-3 text-cyan-400 text-right">Energy</th>
 </tr>
 </thead>
 <tbody>
@@ -267,7 +276,10 @@ ${scores.map((entry, index) => `
 <tr class="border-b border-slate-800 last:border-b-0">
 <td class="p-3">${index + 1}</td>
 <td class="p-3">${entry.team}</td>
-<td class="p-3 font-mono">${entry.score}</td>
+<td class="p-3 font-mono text-right">${entry.score}</td>
+<td class="p-3 font-mono text-right">${entry.stability}%</td>
+<td class="p-3 font-mono text-right">${entry.production}%</td>
+<td class="p-3 font-mono text-right">${entry.energy}%</td>
 </tr>
 `).join('')}
 </tbody>
@@ -279,12 +291,13 @@ ${scores.map((entry, index) => `
             }
         }
 
+
         async function clearAllScores() {
             if (confirm('Are you sure you want to delete all team scores? This cannot be undone.')) {
                 try {
                     const response = await fetch(API_URL, { method: 'DELETE' });
                     if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-                    await displayAdminDashboard(); // Refresh the dashboard
+                    await displayAdminDashboard();
                 } catch (error) {
                     console.error("Failed to clear scores:", error);
                     alert('Could not clear scores. Please check the server connection.');
@@ -326,9 +339,39 @@ ${scores.map((entry, index) => `
             gameContainer.style.display = 'block';
         }
 
+        function startTimer() {
+            clearInterval(scenarioTimer); // Always clear any previous timer
+            let timeLeft = 45;
+
+            timerDisplay.textContent = `00:${timeLeft}`;
+            timerDisplay.classList.remove('text-red-500');
+            timerDisplay.classList.add('text-amber-400');
+
+            scenarioTimer = setInterval(() => {
+                timeLeft--;
+                timerDisplay.textContent = `00:${timeLeft.toString().padStart(2, '0')}`;
+
+                if (timeLeft <= 10) {
+                    timerDisplay.classList.remove('text-amber-400');
+                    timerDisplay.classList.add('text-red-500');
+                }
+
+                if (timeLeft <= 0) {
+                    clearInterval(scenarioTimer);
+                    // Auto-select the "do nothing" or "ignore" option on timeout
+                    const defaultAction = scenarios[currentScenarioIndex].actions.find(
+                        a => a.text.toLowerCase().includes('do nothing') || a.text.toLowerCase().includes('ignore') || a.text.toLowerCase().includes('wait')
+                    );
+                    if (defaultAction) {
+                        handleAction(defaultAction.effects);
+                    }
+                }
+            }, 1000);
+        }
+
         async function displayScenario() {
             if (currentScenarioIndex >= scenarios.length) {
-                await endGame(); // Await the async endGame function
+                await endGame();
                 return;
             }
 
@@ -344,9 +387,13 @@ ${scores.map((entry, index) => `
                 button.onclick = () => handleAction(action.effects);
                 actionsContainer.appendChild(button);
             });
+
+            startTimer(); // Start the timer for the new scenario
         }
 
         function handleAction(effects) {
+            clearInterval(scenarioTimer); // Stop the timer when an action is taken
+
             kpis.stability = Math.max(0, Math.min(100, kpis.stability + (effects.stability || 0)));
             kpis.production = Math.max(0, Math.min(100, kpis.production + (effects.production || 0)));
             kpis.energy = Math.max(0, Math.min(100, kpis.energy + (effects.energy || 0)));
@@ -354,53 +401,58 @@ ${scores.map((entry, index) => `
             updateUI();
 
             currentScenarioIndex++;
-            setTimeout(displayScenario, 500);
+            // Add a slight delay before showing the next scenario
+            setTimeout(displayScenario, 750);
         }
 
         function updateUI() {
             stabilityBar.style.width = kpis.stability + '%';
             stabilityBar.style.backgroundColor = getBarColor(kpis.stability);
             stabilityValue.textContent = Math.round(kpis.stability) + '%';
-            stabilityValue.style.color = getBarColor(kpis.stability, true);
 
             productionBar.style.width = kpis.production + '%';
             productionBar.style.backgroundColor = getBarColor(kpis.production);
             productionValue.textContent = Math.round(kpis.production) + '%';
-            productionValue.style.color = getBarColor(kpis.production, true);
 
             energyBar.style.width = kpis.energy + '%';
             energyBar.style.backgroundColor = getBarColor(kpis.energy);
             energyValue.textContent = Math.round(kpis.energy) + '%';
-            energyValue.style.color = getBarColor(kpis.energy, true);
         }
 
-        function getBarColor(value, isText = false) {
-            const red = '#ef4444', amber = '#f59e0b', green = '#22c55e';
-            if (value < 30) return isText ? red : red;
-            if (value < 60) return isText ? amber : amber;
-            return isText ? green : green;
+        function getBarColor(value) {
+            if (value < 30) return '#ef4444'; // red-500
+            if (value < 60) return '#f59e0b'; // amber-500
+            return '#22c55e'; // green-500
         }
 
         async function endGame() {
+            clearInterval(scenarioTimer); // Ensure timer is stopped at the end
             gameArea.style.display = 'none';
             resultsScreen.style.display = 'flex';
 
             const finalScore = Math.round(kpis.stability * 1.2 + kpis.production * 1.0 + kpis.energy * 1.5);
             finalScoreEl.textContent = finalScore;
 
-            // --- SUBMIT SCORE TO SERVER ---
             if (currentTeam && currentTeam.toLowerCase() !== 'admin') {
+                const scoreData = {
+                    team: currentTeam,
+                    score: finalScore,
+                    stability: Math.round(kpis.stability),
+                    production: Math.round(kpis.production),
+                    energy: Math.round(kpis.energy)
+                };
+
                 try {
                     const response = await fetch(API_URL, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ team: currentTeam, score: finalScore }),
+                        body: JSON.stringify(scoreData),
                     });
                     if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-                    console.log('Score submitted successfully for team:', currentTeam);
+                    console.log('Score submitted successfully:', scoreData);
                 } catch (error) {
                     console.error("Failed to submit score:", error);
-                    alert('There was an issue saving your score to the server. Your score may not be on the leaderboard.');
+                    alert('There was an issue saving your score to the server.');
                 }
             }
 
